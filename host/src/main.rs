@@ -371,14 +371,15 @@ async fn host_main(data_dir: PathBuf, force_pair: bool, proxy_target: Option<std
         .secret_key(secret)
         .alpns(vec![ALPN.to_vec()]);
     if let Some(port) = port {
+        // bind_addr 只解析地址,报不出「端口被占用」;那种失败在下面的 bind() 才暴露
         builder = builder
             .bind_addr(format!("0.0.0.0:{port}"))
-            .map_err(|e| anyhow::anyhow!("{}: {e}", t("iroh endpoint 端口绑定失败(端口可能被占用)", "failed to bind the iroh endpoint port (it may be in use)")))?;
+            .map_err(|e| anyhow::anyhow!("{}: {e}", t("iroh endpoint 监听地址无效", "invalid iroh endpoint bind address")))?;
     }
     let ep = builder
         .bind()
         .await
-        .context(t("iroh endpoint 启动失败", "failed to start the iroh endpoint"))?;
+        .context(t("iroh endpoint 启动失败(端口可能被占用)", "failed to start the iroh endpoint (the port may be in use)"))?;
     let port = ipv4_port(&ep);
     emit(&PluginOut::Ready { endpoint_id: ep.id().to_string(), port });
 
