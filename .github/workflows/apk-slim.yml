@@ -1,0 +1,45 @@
+name: lan-slim
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk-slim:
+    name: android apk slim arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '22' }
+      - uses: pnpm/action-setup@v6
+        with: { version: 10 }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '21' }
+      - uses: android-actions/setup-android@v3
+        with: { packages: platform-tools }
+      - name: 装 NDK
+        run: |
+          sdkmanager --install "ndk;27.0.12077973"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+      - run: pnpm install
+        working-directory: app
+      - run: rm -rf app/src-tauri/android-runtime
+      - run: pnpm exec tauri android build --apk --debug --split-per-abi --target aarch64
+        working-directory: app
+      - name: APK 改名
+        run: |
+          version=$(node -p "require('./package.json').version")
+          find app/src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | while read -r f; do
+            mv "$f" "$(dirname "$f")/dsh-tether-$version-arm64-slim.apk"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: apk-slim
+          path: app/src-tauri/gen/android/app/build/outputs/apk/**/debug/*.apk
+          if-no-files-found: error
