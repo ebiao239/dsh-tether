@@ -253,6 +253,19 @@ function startConnect(id) {
 
 // —— 配对 ——
 
+let pairMode = 'string' // 'string' 配对串 / 'direct' 直连
+
+function setPairMode(mode) {
+  pairMode = mode
+  el('pair-mode-string').classList.toggle('active', mode === 'string')
+  el('pair-mode-direct').classList.toggle('active', mode === 'direct')
+  el('pair-peer-field').classList.toggle('hidden', mode !== 'string')
+  el('pair-addr-field').classList.toggle('hidden', mode !== 'direct')
+}
+
+el('pair-mode-string').addEventListener('click', () => setPairMode('string'))
+el('pair-mode-direct').addEventListener('click', () => setPairMode('direct'))
+
 function openPairView() {
   el('pair-error').classList.add('hidden')
   el('pair-submit').disabled = false
@@ -262,18 +275,33 @@ function openPairView() {
 el('pair-submit').addEventListener('click', async () => {
   const err = el('pair-error')
   err.classList.add('hidden')
-  let peer = el('pair-peer').value.trim()
+  let peer
   let code = el('pair-code').value.trim()
-  // 支持「主机ID#配对码」整行粘贴
-  if (peer.includes('#')) {
-    const [p, c] = peer.split('#', 2)
-    peer = p.trim()
-    if (!code) code = c.trim()
-  }
-  if (!peer || !code) {
-    err.textContent = t('pair.incomplete')
-    err.classList.remove('hidden')
-    return
+  let addr
+  if (pairMode === 'direct') {
+    // 直连:粘贴「主机ID#IP:端口」整行
+    const direct = el('pair-addr').value.trim()
+    const sep = direct.indexOf('#')
+    if (sep < 0 || !direct.slice(0, sep).trim() || !direct.slice(sep + 1).trim()) {
+      err.textContent = t('pair.directIncomplete')
+      err.classList.remove('hidden')
+      return
+    }
+    peer = direct.slice(0, sep).trim()
+    addr = direct.slice(sep + 1).trim()
+  } else {
+    peer = el('pair-peer').value.trim()
+    // 支持「主机ID#配对码」整行粘贴
+    if (peer.includes('#')) {
+      const [p, c] = peer.split('#', 2)
+      peer = p.trim()
+      if (!code) code = c.trim()
+    }
+    if (!peer || !code) {
+      err.textContent = t('pair.incomplete')
+      err.classList.remove('hidden')
+      return
+    }
   }
   el('pair-submit').disabled = true
   live = false
@@ -281,7 +309,16 @@ el('pair-submit').addEventListener('click', async () => {
   showView('status')
   connectingTo = peer
   try {
-    await invoke('pair', { peer, code, name: el('pair-name').value, label: el('pair-label').value })
+    if (pairMode === 'direct') {
+      await invoke('connect_direct', {
+        peer, addr,
+        name: el('pair-name').value,
+        code: code === '' ? null : code,
+        label: el('pair-label').value,
+      })
+    } else {
+      await invoke('pair', { peer, code, name: el('pair-name').value, label: el('pair-label').value })
+    }
     await refreshHosts()
   } catch (e) {
     el('pair-error').textContent = String(e)
