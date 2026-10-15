@@ -146,6 +146,11 @@ enum Cmd {
             "where to forward proxy streams from paired devices (the dsh web address); without it they are refused",
         ))]
         proxy_target: Option<std::net::SocketAddr>,
+        #[arg(long, help = t(
+            "iroh endpoint 的 UDP 监听端口;固定下来手机直连地址才稳定,不给则 OS 分配",
+            "the UDP port for the iroh endpoint; fix it so the phone's direct address stays stable, omitted means OS-assigned",
+        ))]
+        port: Option<u16>,
     },
     #[command(about = t(
         "手机端替身:连接 host,打印审批请求并按策略应答",
@@ -211,7 +216,7 @@ enum PluginIn {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 enum PluginOut {
-    Ready { endpoint_id: String },
+    Ready { endpoint_id: String, port: u16 },
     Pairing { code: String, expires_in_sec: u64 },
     PairingClosed { reason: String },
     PairingDone { peer: String, name: String },
@@ -280,8 +285,8 @@ async fn main() -> Result<()> {
             let secret = load_or_create_secret(&dir.join("identity.key"))?;
             println!("{}", secret.public());
         }
-        Cmd::Host { data_dir, pair, proxy_target } => {
-            host_main(data_dir.unwrap_or_else(default_data_dir), pair, proxy_target).await?
+        Cmd::Host { data_dir, pair, proxy_target, port } => {
+            host_main(data_dir.unwrap_or_else(default_data_dir), pair, proxy_target, port).await?
         }
         Cmd::PhoneSim { proxy_listen, peer, code, name, auto, delay, data_dir } => {
             let dir = data_dir.unwrap_or_else(|| default_data_dir_named("dsh-tether-phone-sim"));
@@ -350,17 +355,32 @@ fn endpoint_builder() -> iroh::endpoint::Builder {
     builder
 }
 
-async fn host_main(data_dir: PathBuf, force_pair: bool, proxy_target: Option<std::net::SocketAddr>) -> Result<()> {
+/// iroh 总绑一个 IPv4 socket;取其端口作为手机直连的端口。
+fn ipv4_port(ep: &Endpoint) -> u16 {
+    ep.bound_sockets()
+        .iter()
+        .find_map(|a| a.is_ipv4().then_some(a.port()))
+        .expect("the iroh endpoint always binds an IPv4 socket")
+}
+
+async fn host_main(data_dir: PathBuf, force_pair: bool, proxy_target: Option<std::net::SocketAddr>, port: Option<u16>) -> Result<()> {
     let secret = load_or_create_secret(&data_dir.join("identity.key"))?;
     let store_path = data_dir.join("paired.json");
     let store = load_store(&store_path);
-    let ep = endpoint_builder()
+    let mut builder = endpoint_builder()
         .secret_key(secret)
-        .alpns(vec![ALPN.to_vec()])
+        .alpns(vec![ALPN.to_vec()]);
+    if let Some(port) = port {
+        builder = builder
+            .bind_addr(format!("0.0.0.0:{port}"))
+            .map_err(|e| anyhow::anyhow!("{}: {e}", t("iroh endpoint 端口绑定失败(端口可能被占用)", "failed to bind the iroh endpoint port (it may be in use)")))?;
+    }
+    let ep = builder
         .bind()
         .await
         .context(t("iroh endpoint 启动失败", "failed to start the iroh endpoint"))?;
-    emit(&PluginOut::Ready { endpoint_id: ep.id().to_string() });
+    let port = ipv4_port(&ep);
+    emit(&PluginOut::Ready { endpoint_id: ep.id().to_string(), port });
 
     let mut state = HostState { store_path, store, pairing: None, conns: HashMap::new(), proxy_auth: None };
     if force_pair || state.store.devices.is_empty() {
