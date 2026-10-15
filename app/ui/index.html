@@ -44,8 +44,15 @@
   <main id="view-pair" class="view hidden">
     <h1 data-i18n="pair.title"></h1>
     <p class="hint" data-i18n-html="pair.hint"></p>
-    <label><span data-i18n="pair.peer"></span>
+    <div class="segmented" id="pair-mode">
+      <button id="pair-mode-string" class="seg active" type="button" data-i18n="pair.modeString"></button>
+      <button id="pair-mode-direct" class="seg" type="button" data-i18n="pair.modeDirect"></button>
+    </div>
+    <label id="pair-peer-field"><span data-i18n="pair.peer"></span>
       <input id="pair-peer" type="text" autocomplete="off" spellcheck="false" data-i18n-ph="pair.peerPlaceholder" />
+    </label>
+    <label id="pair-addr-field" class="hidden"><span data-i18n="pair.addr"></span>
+      <input id="pair-addr" type="text" autocomplete="off" spellcheck="false" data-i18n-ph="pair.addrPlaceholder" />
     </label>
     <label><span data-i18n="pair.code"></span>
       <input id="pair-code" type="text" inputmode="numeric" maxlength="6" autocomplete="off" data-i18n-ph="pair.codePlaceholder" />
