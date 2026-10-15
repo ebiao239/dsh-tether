@@ -1,0 +1,74 @@
+## 局域网直连版 · 手动触发构建：产出手机 arm64 debug APK + 电脑 win64 sidecar。
+## 不依赖签名 secrets：debug APK 用 Android 自动 debug keystore,可 sideload 验收。
+name: lan-direct-build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sidecar-win64:
+    name: sidecar win32-x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: win32-x64
+      - run: cargo build --release -p tether-host --target x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sidecar-win64
+          path: target/x86_64-pc-windows-msvc/release/tether-host.exe
+          if-no-files-found: error
+
+  apk-debug:
+    name: android apk debug arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '22' }
+      - uses: pnpm/action-setup@v6
+        with: { version: 10 }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '21' }
+      - uses: android-actions/setup-android@v3
+        with: { packages: platform-tools }
+      - name: 装 NDK
+        run: |
+          sdkmanager --install "ndk;27.0.12077973"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+      - run: pnpm install
+        working-directory: app
+      - uses: actions/cache@v4
+        with:
+          path: app/src-tauri/android-runtime/cache
+          key: android-runtime-${{ hashFiles('package.json') }}
+      - run: node scripts/build-android-runtime.mjs
+      - run: pnpm exec tauri android build --apk --debug --split-per-abi --target aarch64
+        working-directory: app
+      - name: APK 改名
+        run: |
+          version=$(node -p "require('./package.json').version")
+          find app/src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | while read -r f; do
+            abi=$(basename "$(dirname "$(dirname "$f")")")
+            mv "$f" "$(dirname "$f")/dsh-tether-$version-$abi-debug.apk"
+          done
+          ls -la app/src-tauri/gen/android/app/build/outputs/apk/*/debug/*.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: apk-debug
+          path: app/src-tauri/gen/android/app/build/outputs/apk/**/debug/*.apk
+          if-no-files-found: error
