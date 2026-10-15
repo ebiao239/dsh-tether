@@ -163,6 +163,23 @@ input::placeholder { color: var(--muted); }
 }
 .btn-slim-quiet { background: transparent; }
 
+/* 配对页「配对串 / 直连」分段控件 */
+.segmented { display: flex; gap: 6px; margin-bottom: 16px; }
+.seg {
+  flex: 1;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.seg.active { color: var(--text); background: var(--fill); }
+
 .about {
   display: flex;
   align-items: center;
