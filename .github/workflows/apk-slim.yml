@@ -31,11 +31,12 @@ jobs:
         working-directory: app
       - run: rm -rf app/src-tauri/android-runtime
       - name: 生成 android 工程(并剥离调试符号配置)
+        working-directory: app
         run: |
           pnpm exec tauri android init --ci
           python3 - <<'PY'
           import re, pathlib
-          p = pathlib.Path("app/src-tauri/gen/android/app/build.gradle.kts")
+          p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
           s = p.read_text(encoding="utf-8")
           # 删除 debug 变体里强制保留 .so 调试符号的 4 行(这是 APK 344MB .so 的元凶)
           s = re.sub(r'\s*jniLibs\.keepDebugSymbols\.add\("[^"]+"\)\n?', '\n', s)
