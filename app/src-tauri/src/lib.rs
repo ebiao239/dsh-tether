@@ -11,7 +11,7 @@ mod local;
 use anyhow::{bail, Context as _, Result};
 use tether_core::i18n::t;
 use iroh::endpoint::presets;
-use iroh::{Endpoint, EndpointId};
+use iroh::{Endpoint, EndpointAddr, EndpointId};
 use tether_core::{
     load_or_create_secret, pair_fail_text, read_line_bounded, write_line, write_private, Wire, ALPN,
     MAX_LINE,
@@ -40,6 +40,9 @@ struct HostRecord {
     /// 配对时用户给这台主机起的名字;空则前端显示 ID 前缀
     #[serde(default)]
     label: String,
+    /// 直连地址(ip:port);有值则下次一键重连走直连,不再依赖 discovery
+    #[serde(default)]
+    addr: Option<String>,
 }
 
 /// 手机侧的主机簿:配过的都留着,不必为换一台重填凭证
@@ -88,7 +91,7 @@ fn load_book(app: &AppHandle) -> HostBook {
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else { return HostBook::default() };
     let Some(id) = value.get("id").and_then(|v| v.as_str()) else { return HostBook::default() };
     HostBook {
-        hosts: vec![HostRecord { id: id.to_string(), label: String::new() }],
+        hosts: vec![HostRecord { id: id.to_string(), label: String::new(), addr: None }],
         current: Some(id.to_string()),
     }
 }
@@ -120,8 +123,8 @@ async fn get_or_init_endpoint(app: &AppHandle, state: &AppState) -> Result<Endpo
 
 /// 连接 actor:发首行(Pair 或 Hello),配对成功即持久化 host,
 /// 之后读侧转事件给前端、写侧从 mpsc 取决定,断开清理并广播状态。
-async fn run_connection(app: AppHandle, peer: EndpointId, first: Wire, pair_label: Option<String>) {
-    if let Err(e) = run_connection_inner(&app, peer, first, pair_label).await {
+async fn run_connection(app: AppHandle, peer: EndpointId, first: Wire, pair_label: Option<String>, direct: Option<std::net::SocketAddr>) {
+    if let Err(e) = run_connection_inner(&app, peer, first, pair_label, direct).await {
         emit_state(&app, "disconnected", format!("{e:#}"));
     } else {
         emit_state(&app, "disconnected", t("连接已断开", "Connection closed"));
@@ -135,15 +138,27 @@ async fn run_connection_inner(
     peer: EndpointId,
     first: Wire,
     pair_label: Option<String>,
+    direct: Option<std::net::SocketAddr>,
 ) -> Result<()> {
     emit_state(app, "connecting", t("正在连接主机…", "Connecting to the computer…"));
     let state = app.state::<AppState>();
     let ep = get_or_init_endpoint(app, &state).await?;
-    let conn = ep
-        .connect(peer, ALPN)
-        .await
-        .context(t("连不上主机(插件未运行、ID 不对或网络不可达)", "cannot reach the computer (plugin not running, wrong ID, or no route)"))?;
+    let conn = match direct {
+        Some(addr) => ep.connect(EndpointAddr::new(peer).with_ip_addr(addr), ALPN).await,
+        None => ep.connect(peer, ALPN).await,
+    }
+    .context(t("连不上主机(插件未运行、ID 不对或网络不可达)", "cannot reach the computer (plugin not running, wrong ID, or no route)"))?;
     let (mut send, mut recv) = conn.open_bi().await.context(t("打开控制流失败", "failed to open the control stream"))?;
+
+    // 直连成功:把可达地址记进主机簿,下次一键重连直接走直连,不再依赖 discovery
+    if let Some(addr) = direct {
+        let id = peer.to_string();
+        let mut book = load_book(app);
+        if let Some(existing) = book.hosts.iter_mut().find(|h| h.id == id) {
+            existing.addr = Some(addr.to_string());
+            save_book(app, &book)?;
+        }
+    }
 
     let pairing = matches!(first, Wire::Pair { .. });
     write_line(&mut send, &serde_json::to_string(&first)?).await?;
@@ -158,7 +173,7 @@ async fn run_connection_inner(
                 let mut book = load_book(app);
                 match book.hosts.iter_mut().find(|h| h.id == id) {
                     Some(existing) => existing.label = label,
-                    None => book.hosts.push(HostRecord { id: id.clone(), label }),
+                    None => book.hosts.push(HostRecord { id: id.clone(), label, addr: direct.map(|a| a.to_string()) }),
                 }
                 book.current = Some(id);
                 save_book(app, &book)?;
@@ -257,6 +272,10 @@ fn parse_peer(peer: &str) -> Result<EndpointId, String> {
     peer.trim().parse().map_err(|e| format!("{}{e}", t("主机 ID 无效: ", "invalid computer ID: ")))
 }
 
+fn parse_direct_addr(addr: &str) -> Result<std::net::SocketAddr, String> {
+    addr.trim().parse().map_err(|e| format!("{}{e}", t("直连地址无效: ", "invalid direct address: ")))
+}
+
 #[tauri::command]
 fn list_hosts(app: AppHandle) -> HostBook {
     load_book(&app)
@@ -316,6 +335,7 @@ async fn pair(
         peer,
         Wire::Pair { code, name },
         Some(label.trim().to_string()),
+        None,
     ));
     Ok(())
 }
@@ -328,16 +348,48 @@ async fn connect(app: AppHandle, id: Option<String>) -> Result<(), String> {
     let Some(target) = target else {
         return Err(t("还没有配对过的电脑", "no computer has been paired yet").into());
     };
-    if !book.hosts.iter().any(|h| h.id == target) {
-        return Err(t("这台电脑不在已配对列表里", "that computer is not in the paired list").into());
-    }
+    // 主机簿里若记着直连地址就走直连;否则退回 discovery(跨网络场景仍可用)
+    let direct = {
+        let host = book.hosts.iter().find(|h| h.id == target);
+        let Some(host) = host else {
+            return Err(t("这台电脑不在已配对列表里", "that computer is not in the paired list").into());
+        };
+        host.addr.as_deref().map(parse_direct_addr).transpose()?
+    };
     if book.current.as_deref() != Some(target.as_str()) {
         book.current = Some(target.clone());
         save_book(&app, &book).map_err(|e| format!("{e:#}"))?;
     }
     let peer = parse_peer(&target)?;
     let name = t("我的手机", "My phone").to_string();
-    tauri::async_runtime::spawn(run_connection(app, peer, Wire::Hello { name }, None));
+    tauri::async_runtime::spawn(run_connection(app, peer, Wire::Hello { name }, None, direct));
+    Ok(())
+}
+
+/// 直连指定主机:输 ip:port,不经过 discovery。带配对码则首次配对,否则按已配对直连。
+#[tauri::command]
+async fn connect_direct(
+    app: AppHandle,
+    peer: String,
+    addr: String,
+    name: String,
+    code: Option<String>,
+    label: String,
+) -> Result<(), String> {
+    let peer = parse_peer(&peer)?;
+    let socket_addr = parse_direct_addr(&addr)?;
+    let name = if name.trim().is_empty() { t("我的手机", "My phone").to_string() } else { name.trim().to_string() };
+    let (first, pair_label) = match code {
+        Some(code) => {
+            let code = code.trim().to_string();
+            if code.len() != 6 || !code.chars().all(|c| c.is_ascii_digit()) {
+                return Err(t("配对码应为 6 位数字", "the pairing code must be 6 digits").into());
+            }
+            (Wire::Pair { code, name }, Some(label.trim().to_string()))
+        }
+        None => (Wire::Hello { name }, None),
+    };
+    tauri::async_runtime::spawn(run_connection(app, peer, first, pair_label, Some(socket_addr)));
     Ok(())
 }
 
@@ -449,6 +501,7 @@ pub fn run() {
             forget_host,
             pair,
             connect,
+            connect_direct,
             app_version,
             set_lang,
             local_status,
