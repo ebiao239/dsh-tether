@@ -96,6 +96,11 @@ jobs:
             mv "$f" "$(dirname "$f")/dsh-tether-$version-arm64-slim.apk"
           done
           ls -la app/src-tauri/gen/android/app/build/outputs/apk/**/release/*.apk
+          echo "===== APK 签名验证（apksigner）====="
+          APK_FILE=$(find app/src-tauri/gen/android/app/build/outputs/apk -name 'dsh-tether-*.apk' | head -1)
+          echo "APK_FILE=$APK_FILE"
+          $ANDROID_HOME/build-tools/*/apksigner verify --print-certs "$APK_FILE" 2>&1 | head -40 || true
+          echo "===== 验证结束 ====="
       - uses: actions/upload-artifact@v7
         with:
           name: apk-slim
