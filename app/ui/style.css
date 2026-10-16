@@ -1,32 +1,31 @@
-/* 设计令牌全部取自 dsh web UI 的实测计算值(浅色/深色各量一遍),
-   不另起一套视觉:额外加的页面和按钮要看起来就是 dsh 的一部分。
-   dsh 的主题默认「跟随系统」,所以这里跟随 prefers-color-scheme;
-   用户在 dsh 里显式选了与系统相反的主题时,外壳这一条窄带会不一致。 */
+/* 设计令牌:深色为默认(Android WebView 不报 prefers-color-scheme 时也用深色)。
+   浅色仅在系统明确上报 prefers-color-scheme: light 时使用。
+   与 dsh 内部深色主题视觉一致:用户在 dsh 里不必切换主题来匹配顶栏。 */
 :root {
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --text: #0f1115;
-  --muted: #81858c;
-  --fill: #ebeef2;        /* 选中/主操作填充 */
-  --fill-soft: #f5f6f7;   /* 控件药丸、输入框 */
-  --border: rgba(0, 0, 0, 0.1);
-  --ok: #12805c;
-  --warn: #b25e09;
-  --danger: #b42318;
+  --bg: #151517;
+  --surface: #2c2c2e;
+  --text: #f9fafb;
+  --muted: #adb2b8;
+  --fill: #43454a;
+  --fill-soft: #353638;
+  --border: rgba(255, 255, 255, 0.12);
+  --ok: #3ddc97;
+  --warn: #f0a35e;
+  --danger: #f5766b;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --bg: #151517;
-    --surface: #2c2c2e;
-    --text: #f9fafb;
-    --muted: #adb2b8;
-    --fill: #43454a;
-    --fill-soft: #353638;
-    --border: rgba(255, 255, 255, 0.12);
-    --ok: #3ddc97;
-    --warn: #f0a35e;
-    --danger: #f5766b;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --text: #0f1115;
+    --muted: #81858c;
+    --fill: #ebeef2;
+    --fill-soft: #f5f6f7;
+    --border: rgba(0, 0, 0, 0.1);
+    --ok: #12805c;
+    --warn: #b25e09;
+    --danger: #b42318;
   }
 }
 
@@ -50,28 +49,33 @@ body {
   color-scheme: light dark;
 }
 
-/* 顶栏:连上之后它没有信息价值,收成一条窄带把高度还给 dsh 的界面 */
+/* 顶栏:未连接时依然有存在感;连上后收成 24px 窄带 */
 .topbar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 10px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
-.topbar.slim { padding: calc(env(safe-area-inset-top, 0px) + 4px) 10px 4px; min-height: 32px; }
+.topbar.slim { align-items: center; padding: calc(env(safe-area-inset-top, 0px) + 2px) 6px 2px; min-height: 24px; gap: 4px; }
 .brand { flex: 1; font-size: 15px; font-weight: 500; }
 .topbar.slim .brand { display: none; }
-.status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
-/* 主机名可能很长,让它省略而不是把「换主机」挤出屏幕 */
+.status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.topbar.slim .status { font-size: 11px; gap: 3px; }
+/* 整行溢出省略 */
 #status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status-extra { display: flex; align-items: center; gap: 4px; overflow: hidden; }
+.topbar.slim #status-text { max-width: 72px; }
+.status-extra { display: flex; align-items: center; gap: 3px; overflow: hidden; flex-shrink: 100; }
 .status-sep { color: var(--muted); opacity: 0.4; flex: none; }
-.status-tag { font-size: 10px; font-weight: 500; padding: 1px 5px; border-radius: 6px; background: var(--fill-soft); flex: none; }
+.status-tag { font-size: 10px; font-weight: 500; padding: 0 4px; border-radius: 5px; background: var(--fill-soft); flex: none; line-height: 16px; }
 #status-time { white-space: nowrap; flex: none; }
 #status-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+/* 流量数字:默认隐藏,连接后由 JS 填入 */
+#traffic-tx, #traffic-rx { font-size: 10px; color: var(--muted); white-space: nowrap; flex: none; }
+#traffic-tx { margin-left: 2px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .dot-off { background: var(--muted); }
 .dot-connecting { background: var(--warn); }
 .dot-on { background: var(--ok); }
@@ -207,7 +211,10 @@ input::placeholder { color: var(--muted); }
 .webui {
   flex: 1;
   width: 100%;
+  height: 100%;
   border: none;
+  margin: 0;
+  padding: 0;
   background: var(--bg);
 }
 
@@ -220,6 +227,7 @@ input::placeholder { color: var(--muted); }
 }
 
 .topbar-hosts { flex: none; margin: 0; }
+.topbar.slim .topbar-hosts { font-size: 10px; padding: 2px 6px; line-height: 16px; border-radius: 10px; }
 .local-card { background: var(--fill-soft); border-radius: 12px; padding: 12px 14px 14px; margin-bottom: 18px; }
 .local-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .local-card .hint { margin: 6px 0 2px; }
