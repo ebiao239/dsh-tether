@@ -135,7 +135,6 @@ function stopTrafficPoll() {
   if (trafficTimer !== null) { clearInterval(trafficTimer); trafficTimer = null }
   el('traffic-tx').classList.add('hidden')
   el('traffic-rx').classList.add('hidden')
-  document.querySelector('.traffic-sep')?.classList.add('hidden')
 }
 
 async function pollTraffic() {
@@ -143,13 +142,9 @@ async function pollTraffic() {
   try {
     const { tx_bytes, rx_bytes } = await invoke('traffic_stats')
     const tx = el('traffic-tx')
-    const rx = el('traffic-rx')
-    const sep = document.querySelector('.traffic-sep')
-    tx.textContent = '↑' + formatBytes(tx_bytes)
-    rx.textContent = '↓' + formatBytes(rx_bytes)
+    tx.textContent = '↑' + formatBytes(tx_bytes) + '↓' + formatBytes(rx_bytes)
     tx.classList.remove('hidden')
-    rx.classList.remove('hidden')
-    if (sep) sep.classList.remove('hidden')
+    // rx 始终隐藏,上下行合并显示在一个 span 里
   } catch {
     // 非 arm64 构建没这个命令,静默吞掉
   }
