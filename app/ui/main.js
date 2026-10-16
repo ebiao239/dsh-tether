@@ -64,9 +64,52 @@ function setSlim(slim) {
   el('topbar-hosts').classList.toggle('hidden', !slim)
 }
 
-function setStatus(status, text) {
+function setStatus(status, detail) {
   el('status-dot').className = 'dot ' + (status === 'connected' ? 'dot-on' : status === 'connecting' ? 'dot-connecting' : 'dot-off')
-  el('status-text').textContent = text
+  el('status-text').textContent = typeof detail === 'string' ? detail : detail?.text ?? ''
+  const extra = el('status-extra')
+  if (status === 'connected' && detail?.addr) {
+    el('status-addr').textContent = detail.addr
+    el('status-tag').textContent = detail.tag ?? ''
+    el('status-tag').classList.toggle('hidden', !detail.tag)
+    extra.classList.remove('hidden')
+  } else {
+    extra.classList.add('hidden')
+  }
+}
+
+/** 格式化已连接时长,最小粒度分钟 */
+function formatDuration(ms) {
+  const totalMin = Math.floor(ms / 60000)
+  if (totalMin < 1) return t('status.justNow')
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h > 0) return m > 0 ? t('status.hoursMinutes', { h, m }) : t('status.hours', { h })
+  return t('status.minutes', { m: totalMin })
+}
+
+/** 从直连地址推断连接方式标签 */
+function tagForAddr(addr) {
+  if (!addr) return ''
+  const ip = addr.split(':')[0]
+  // 私有地址段
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(ip)) return t('status.tagLan')
+  return t('status.tagDirect')
+}
+
+/** 开始刷新顶栏时长显示 */
+function startTimeTick() {
+  stopTimeTick()
+  const tick = () => {
+    if (!connectionStart || !el('webui').classList.contains('hidden') === false) return
+    el('status-time').textContent = formatDuration(Date.now() - connectionStart)
+  }
+  tick()
+  timeTickId = setInterval(tick, 30000)
+}
+
+function stopTimeTick() {
+  if (timeTickId !== null) { clearInterval(timeTickId); timeTickId = null }
 }
 
 // —— 待审批通知 ——
@@ -89,7 +132,10 @@ function notifyApproval({ toolName, reason }) {
   })
 }
 
-// —— 主机列表 ——
+/** 本次连接开始时间戳(ms);用于顶栏显示「已连接 N 分钟」 */
+let connectionStart = null
+/** 时长刷新定时器 id */
+let timeTickId = null
 
 const shortId = (id) => id.slice(0, 8) + '…' + id.slice(-4)
 
@@ -193,11 +239,19 @@ function renderHosts() {
 /** 顶栏的「已连接 · X」;改名后要跟着变,所以单独一处 */
 function showConnectedLabel() {
   if (mode === 'local') {
-    setStatus('connected', t('status.local'))
+    setStatus('connected', { text: t('status.local') })
     return
   }
   const n = hostName(connectingTo)
-  setStatus('connected', n ? t('status.connectedTo', { name: n }) : t('status.connected'))
+  const host = book.hosts.find((h) => h.id === connectingTo)
+  const addr = host?.addr ?? null
+  const rich = {
+    text: n ? t('status.connectedTo', { name: n }) : t('status.connected'),
+    addr: addr ? addr.replace(/:\d+$/, '') : null,
+    tag: tagForAddr(addr),
+  }
+  setStatus('connected', rich)
+  if (rich.addr) startTimeTick()
 }
 
 async function refreshHosts() {
@@ -214,8 +268,9 @@ function onState({ status, detail }) {
   if (mode !== 'remote') return
   if (status === 'connected') {
     live = true
+    connectionStart = Date.now()
     showConnectedLabel()
-    // 刚配对完的主机还不在本地簿里,取回来补上名字
+    // 刚配对完的主机还不在本地簿里,取回来补上名字和 addr
     if (hostName(connectingTo) === '') refreshHosts().catch(() => {})
     el('reconnect-row').classList.add('hidden')
   } else if (status === 'connecting') {
@@ -223,6 +278,8 @@ function onState({ status, detail }) {
     setStatus('connecting', n ? t('status.connectingTo', { name: n }) : t('status.connecting'))
   } else {
     live = false
+    connectionStart = null
+    stopTimeTick()
     setStatus('disconnected', t('status.disconnected'))
     el('webui').removeAttribute('src')
     // 配对页正开着就把失败原因显示在那里,别把用户踢走
