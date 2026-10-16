@@ -169,22 +169,8 @@ function apply(ctx, config = {}) {
       )}`,
     )
   }
-  // dsh 0.2.1-alpha.2 起 webServer 能开 TLS。隧道里转的是明文 HTTP(代理流还要改写请求头),
-  // 对着 HTTPS 监听器只会让手机白屏,所以这里直接拒,不留给用户去猜。protocol 是那一版才有的,
-  // 旧版本读不到就按 http 算
-  if ((ctx.webServer.protocol ?? 'http:') !== 'http:') {
-    throw new Error(
-      `[tether] ${tt(
-        'dsh web 开了 TLS(https),而手机走的代理流只能转明文 HTTP,连上只会白屏。去掉 webServer 的 tls 配置再用手机连接。',
-        'dsh web is serving HTTPS, but the proxy stream the phone uses can only carry plain HTTP — the phone would get a blank page. Remove the tls config from webServer before connecting the phone.',
-      )}`,
-    )
-  }
-  // webServer.port 是真实监听端口(config 写 0 时为 OS 分配值),手机由此拿到完整界面。
-  // host 从 0.2.1-alpha.2 起可以是任意字面地址:IPv6 的要带方括号,否则 sidecar 那边按
-  // SocketAddr 解析 --proxy-target 直接失败(`::1:3000` 不是合法写法)
-  const host = ctx.webServer.host.includes(':') ? `[${ctx.webServer.host}]` : ctx.webServer.host
-  const proxyTarget = `${host}:${ctx.webServer.port}`
+  // webServer.port 是真实监听端口(config 写 0 时为 OS 分配值),手机由此拿到完整界面
+  const proxyTarget = `${ctx.webServer.host}:${ctx.webServer.port}`
 
   // sidecar 的人读日志与这里打在同一个终端上,语言跟着走,免得一半中文一半英文
   const args = ['host', '--proxy-target', proxyTarget, '--lang', terminalZh ? 'zh' : 'en']
@@ -415,6 +401,10 @@ function injectNarrowScreenCss(html) {
   align-items: stretch !important;
 }
 [class*="collapsed"] [class*="footArea"] > [class*="footerActions"] { align-items: center !important; }
+/* 0.1.21 的渲染端 client.js(0.1.23 已删)会把「连接手机」塞进「设置」按钮内部,
+   与 index.js 的 hosts-trigger 重复:底栏看似三项,且「设置」被撑宽、整排错位。
+   宿主仍装旧版时,靠这条把它挡掉——不限宽度,桌面端同样会重复。 */
+[data-dsh-tether="sidebar-btn"] { display: none !important; }
 @media (max-width: 640px) {
   /* hero 背后的装饰性发光椭圆比视口宽,会让整页能被横向拖动 */
   html, body { overflow-x: hidden; }
@@ -505,9 +495,18 @@ function injectNarrowScreenCss(html) {
   [class*="_frame"]:has(> [class*="_handle"])::after { opacity: 1; }
   [class*="_frame"] > [class*="_handle"] { display: none !important; }
 
-  /* 侧栏收起时是图标条,「主机」按钮的文字跟着藏起来,和 dsh 自己的按钮一致 */
+  /* 底栏入口统一成纯图标:底栏本就窄,「设置」两字 vs「我的电脑」四字,文字宽度
+     一长一短,图标自然对不齐。隐掉文字标签,无障碍名留在 aria-label 上不丢;
+     按钮占满整行、内容居中,两个图标就落在同一中轴上。 */
+  [data-slot="settings.trigger"] > span { display: none !important; }
   [data-dsh-tether="hosts-label"] { display: none; }
-  [class*="_frame"]:has(> [class*="_handle"]) [data-dsh-tether="hosts-label"] { display: inline; }
+  button:has(> [data-slot="settings.trigger"]),
+  [data-dsh-tether="hosts-trigger"] {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+  [data-dsh-tether="hosts-row"] { width: 100% !important; }
   @media (prefers-reduced-motion: reduce) {
     [class*="_frame"] > [class*="sidebarCol"],
     [class*="_frame"]::after { transition: none; }
