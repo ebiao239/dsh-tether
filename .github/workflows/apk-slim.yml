@@ -35,15 +35,15 @@ jobs:
       - run: rm -rf app/src-tauri/android-runtime
       - name: 同步 tauri.conf.json 版本
         run: |
-          version=$(node -p "require('./package.json').version")
-          python3 -c "
-          import json, pathlib
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          version = subprocess.check_output(["node", "-p", "require('./package.json').version"], text=True).strip()
           p = pathlib.Path('app/src-tauri/tauri.conf.json')
           c = json.loads(p.read_text())
-          c['version'] = '$version'
+          c['version'] = version
           p.write_text(json.dumps(c, indent=2) + '\n')
-          print(f'tauri.conf.json version -> {c["version"]}')
-          "
+          print(f"tauri.conf.json version -> {version}")
+          PY
       - name: 生成 android 工程
         working-directory: app
         run: pnpm exec tauri android init --ci
