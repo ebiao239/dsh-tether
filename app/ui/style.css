@@ -63,18 +63,21 @@ body {
 .brand { flex: 1; font-size: 15px; font-weight: 500; }
 .topbar.slim .brand { display: none; }
 .status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
-.topbar.slim .status { font-size: 11px; gap: 3px; }
+.topbar.slim .status { font-size: 11px; gap: 4px; }
 /* 整行溢出省略 */
 #status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topbar.slim #status-text { max-width: 72px; }
-.status-extra { display: flex; align-items: center; gap: 3px; overflow: hidden; flex-shrink: 100; }
+.topbar.slim #status-text { max-width: 56px; }
+.status-extra { display: flex; align-items: center; gap: 4px; overflow: hidden; flex-shrink: 100; }
+.topbar.slim .status-extra { gap: 4px; }
 .status-sep { color: var(--muted); opacity: 0.4; flex: none; }
+/* slim 态去分隔点:靠 gap 自然留白 */
+.topbar.slim .status-sep { display: none; }
 .status-tag { font-size: 10px; font-weight: 500; padding: 0 4px; border-radius: 5px; background: var(--fill-soft); flex: none; line-height: 16px; }
 #status-time { white-space: nowrap; flex: none; }
 #status-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 流量数字:默认隐藏,连接后由 JS 填入 */
+.topbar.slim #status-addr { max-width: 88px; }
+/* 流量数字:合并上下行,连接后由 JS 填入 */
 #traffic-tx, #traffic-rx { font-size: 10px; color: var(--muted); white-space: nowrap; flex: none; }
-#traffic-tx { margin-left: 2px; }
 .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .dot-off { background: var(--muted); }
 .dot-connecting { background: var(--warn); }
