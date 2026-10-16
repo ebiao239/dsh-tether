@@ -54,42 +54,49 @@ jobs:
           mkdir -p ~/.android
           echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           echo "keystore written ($(wc -c < ~/.android/debug.keystore) bytes)"
-      - name: 让 release 变体用 debug 签名
+      - name: 让 release 变体用固定 debug 签名
         working-directory: app
         run: |
           python3 - <<'PY'
           import pathlib
           p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
           s = p.read_text()
+
           # 1) signingConfigs.release 指向固定 debug keystore
-          old_sc = '''create("release") {
-              keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }
-              storePassword = keystoreProperties["storePassword"] as String?
-              keyAlias = keystoreProperties["keyAlias"] as String?
-              keyPassword = keystoreProperties["password"] as String?
-          }'''
-          new_sc = '''create("release") {
-              storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
-              storePassword = "android"
-              keyAlias = "androiddebugkey"
-              keyPassword = "android"
-          }'''
-          s = s.replace(old_sc, new_sc)
-          # 2) buildTypes.release 无条件引用 release signingConfig(否则产 unsigned)
-          old_bt = '''if (keystoreProperties.containsKey("storeFile")) {
-                  signingConfig = signingConfigs.getByName("release")
-              }'''
-          new_bt = '''signingConfig = signingConfigs.getByName("release")'''
+          old_sc = 'keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }'
+          if old_sc in s:
+              s = s.replace(
+                  'keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }',
+                  'storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")'
+              )
+              s = s.replace(
+                  'storePassword = keystoreProperties["storePassword"] as String?',
+                  'storePassword = "android"'
+              )
+              s = s.replace(
+                  'keyAlias = keystoreProperties["keyAlias"] as String?',
+                  'keyAlias = "androiddebugkey"'
+              )
+              s = s.replace(
+                  'keyPassword = keystoreProperties["password"] as String?',
+                  'keyPassword = "android"'
+              )
+              print("patched signingConfigs.release -> fixed debug keystore")
+          else:
+              print("WARN: signingConfigs.release old pattern not found")
+
+          # 2) buildTypes.release 无条件引用 release signingConfig（否则产 unsigned APK）
+          old_bt = 'if (keystoreProperties.containsKey("storeFile")) {\n                signingConfig = signingConfigs.getByName("release")\n            }'
           if old_bt in s:
-              s = s.replace(old_bt, new_bt)
+              s = s.replace(old_bt, 'signingConfig = signingConfigs.getByName("release")')
               print("patched buildTypes.release -> unconditional signing")
           else:
-              print("WARN: buildTypes.release if-block not found, check indentation")
-              print(s[s.find("getByName(\\"release\\")"):s.find("getByName(\\"release\\")")+400])
+              print("WARN: buildTypes.release if-block not found")
+
           p.write_text(s)
-          print("patched release signing -> fixed debug keystore")
+          print("done")
           PY
-- name: 构建 APK
+      - name: 构建 APK
         working-directory: app
         run: pnpm exec tauri android build --apk --split-per-abi --target aarch64
       - name: APK 改名
