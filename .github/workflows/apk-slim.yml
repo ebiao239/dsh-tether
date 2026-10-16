@@ -99,7 +99,9 @@ jobs:
           echo "===== APK 签名验证（apksigner）====="
           APK_FILE=$(find app/src-tauri/gen/android/app/build/outputs/apk -name 'dsh-tether-*.apk' | head -1)
           echo "APK_FILE=$APK_FILE"
-          $ANDROID_HOME/build-tools/*/apksigner verify --print-certs "$APK_FILE" 2>&1 | head -40 || true
+          APKSIGNER_JAR=$(ls $ANDROID_HOME/build-tools/*/lib/apksigner.jar | head -1)
+          echo "apksigner jar: $APKSIGNER_JAR"
+          java -jar "$APKSIGNER_JAR" verify --print-certs "$APK_FILE" 2>&1 | head -60 || true
           echo "===== 验证结束 ====="
       - uses: actions/upload-artifact@v7
         with:
