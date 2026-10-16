@@ -54,6 +54,10 @@ jobs:
           mkdir -p ~/.android
           echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           echo "keystore written ($(wc -c < ~/.android/debug.keystore) bytes)"
+          echo "===== 注入的 keystore 证书指纹 ====="
+          keytool -printcert -jarfile /dev/null 2>/dev/null || true
+          keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey 2>&1 | grep -A2 "SHA256\|证书指纹\|Certificate fingerprint" || true
+          echo "===== 指纹打印结束 ====="
       - name: 打印并修复签名配置
         working-directory: app
         run: |
