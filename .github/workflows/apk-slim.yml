@@ -31,9 +31,26 @@ jobs:
       - run: pnpm install
         working-directory: app
       - run: rm -rf app/src-tauri/android-runtime
+      - name: 同步 tauri.conf.json 版本
+        run: |
+          version=$(node -p "require('./package.json').version")
+          python3 -c "
+          import json, pathlib
+          p = pathlib.Path('app/src-tauri/tauri.conf.json')
+          c = json.loads(p.read_text())
+          c['version'] = '$version'
+          p.write_text(json.dumps(c, indent=2) + '\n')
+          print(f'tauri.conf.json version -> {c[\"version\"]}')
+          "
       - name: 生成 android 工程
         working-directory: app
         run: pnpm exec tauri android init --ci
+      - name: 注入固定 debug keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          echo "keystore written ($(wc -c < ~/.android/debug.keystore) bytes)"
       - name: 让 release 变体用 debug 签名
         working-directory: app
         run: |
