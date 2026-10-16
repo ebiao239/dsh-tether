@@ -49,6 +49,7 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
+          mkdir -p ~/.android
           echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           echo "keystore written ($(wc -c < ~/.android/debug.keystore) bytes)"
       - name: 让 release 变体用 debug 签名
