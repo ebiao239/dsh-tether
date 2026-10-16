@@ -4,6 +4,9 @@
 //! 无后台常驻(Android doze 语义下这是产品决定,不是缺陷)。
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 #[cfg(target_os = "android")]
 mod local;
@@ -19,6 +22,43 @@ use tether_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
+use tokio::io::{AsyncRead, ReadBuf};
+
+// —— 累计流量统计 ——
+// 全局原子变量:本次连接累计字节数,断开时清零。
+// 多代理流并发读写同一方向,所以用 AtomicU64 累加(不需要锁)。
+static TX_BYTES: AtomicU64 = AtomicU64::new(0); // 手机发出 → 主机
+static RX_BYTES: AtomicU64 = AtomicU64::new(0); // 主机发出 → 手机收到
+
+fn reset_traffic() {
+    TX_BYTES.store(0, Ordering::Relaxed);
+    RX_BYTES.store(0, Ordering::Relaxed);
+}
+
+/// 每次 read 将字节数累加到指定方向计数器的 AsyncRead 包装器
+struct CountedReader<R> {
+    inner: R,
+    counter: &'static AtomicU64,
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for CountedReader<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let inner = Pin::new(&mut self.inner);
+        match inner.poll_read(cx, buf) {
+            Poll::Ready(Ok(())) => {
+                let n = buf.filled().len() - before;
+                self.counter.fetch_add(n as u64, Ordering::Relaxed);
+                Poll::Ready(Ok(()))
+            }
+            other => other,
+        }
+    }
+}
 
 #[derive(Default)]
 struct AppState {
@@ -131,6 +171,7 @@ async fn run_connection(app: AppHandle, peer: EndpointId, first: Wire, pair_labe
     }
     let state = app.state::<AppState>();
     *state.outgoing.lock().await = None;
+    reset_traffic();
 }
 
 async fn run_connection_inner(
@@ -260,8 +301,15 @@ async fn start_proxy(app: AppHandle, conn: iroh::endpoint::Connection) -> Result
                 if write_line(&mut send, &line).await.is_err() {
                     return;
                 }
-                let mut stream = tokio::io::join(recv, send);
-                let _ = tokio::io::copy_bidirectional(&mut tcp, &mut stream).await;
+                let stream = tokio::io::join(recv, send);
+                // 拆分 tcp / iroh 流,在各自的读方向外各包一层计数包装器,累计本次连接的流量
+                let (tcp_r, mut tcp_w) = tokio::io::split(tcp);
+                let (strm_r, mut strm_w) = tokio::io::split(stream);
+                let mut tx = CountedReader { inner: tcp_r, counter: &TX_BYTES };
+                let mut rx = CountedReader { inner: strm_r, counter: &RX_BYTES };
+                let a = tokio::io::copy(&mut tx, &mut strm_w);
+                let b = tokio::io::copy(&mut rx, &mut tcp_w);
+                let _ = tokio::join!(a, b);
             });
         }
     });
@@ -291,6 +339,18 @@ fn set_lang(tag: String) {
 #[tauri::command]
 fn app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+/// 本次连接累计流量
+#[derive(Serialize)]
+struct TrafficStats { tx_bytes: u64, rx_bytes: u64 }
+
+#[tauri::command]
+fn traffic_stats() -> TrafficStats {
+    TrafficStats {
+        tx_bytes: TX_BYTES.load(Ordering::Relaxed),
+        rx_bytes: RX_BYTES.load(Ordering::Relaxed),
+    }
 }
 
 /// 给已保存的主机改名。凭证不变,只动本地显示名。
@@ -503,6 +563,7 @@ pub fn run() {
             connect,
             connect_direct,
             app_version,
+            traffic_stats,
             set_lang,
             local_status,
             local_start,
