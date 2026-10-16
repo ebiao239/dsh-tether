@@ -54,49 +54,41 @@ jobs:
           mkdir -p ~/.android
           echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           echo "keystore written ($(wc -c < ~/.android/debug.keystore) bytes)"
-      - name: 让 release 变体用固定 debug 签名
+            - name: 让 release 变体用固定 debug 签名
         working-directory: app
         run: |
+          echo "===== build.gradle.kts 签名相关（patch 前）====="
+          grep -n "signingConfig\|keystore\|buildTypes\|getByName\|storeFile\|storePassword\|keyAlias\|keyPassword" src-tauri/gen/android/app/build.gradle.kts || true
+          echo "===== 完整 build.gradle.kts ====="
+          cat src-tauri/gen/android/app/build.gradle.kts
+          echo "===== 开始 patch ====="
           python3 - <<'PY'
           import pathlib
           p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
           s = p.read_text()
 
-          # 1) signingConfigs.release 指向固定 debug keystore
-          old_sc = 'keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }'
-          if old_sc in s:
-              s = s.replace(
-                  'keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }',
-                  'storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")'
-              )
-              s = s.replace(
-                  'storePassword = keystoreProperties["storePassword"] as String?',
-                  'storePassword = "android"'
-              )
-              s = s.replace(
-                  'keyAlias = keystoreProperties["keyAlias"] as String?',
-                  'keyAlias = "androiddebugkey"'
-              )
-              s = s.replace(
-                  'keyPassword = keystoreProperties["password"] as String?',
-                  'keyPassword = "android"'
-              )
-              print("patched signingConfigs.release -> fixed debug keystore")
-          else:
-              print("WARN: signingConfigs.release old pattern not found")
+          # 用更鲁棒的方式：正则替换 release signingConfigs 块里的 keystoreProperties 引用
+          import re
+          # 1) 把 storeFile 那行替换成固定 debug keystore
+          s2 = s.replace('keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }',
+                         'storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")')
+          s2 = s2.replace('storePassword = keystoreProperties["storePassword"] as String?', 'storePassword = "android"')
+          s2 = s2.replace('keyAlias = keystoreProperties["keyAlias"] as String?', 'keyAlias = "androiddebugkey"')
+          s2 = s2.replace('keyPassword = keystoreProperties["password"] as String?', 'keyPassword = "android"')
 
-          # 2) buildTypes.release 无条件引用 release signingConfig（否则产 unsigned APK）
-          old_bt = 'if (keystoreProperties.containsKey("storeFile")) {\n                signingConfig = signingConfigs.getByName("release")\n            }'
-          if old_bt in s:
-              s = s.replace(old_bt, 'signingConfig = signingConfigs.getByName("release")')
-              print("patched buildTypes.release -> unconditional signing")
-          else:
-              print("WARN: buildTypes.release if-block not found")
-
-          p.write_text(s)
-          print("done")
+          # 2) buildTypes.release 无条件引用 signingConfig
+          # 匹配 if (keystoreProperties.containsKey(...)) { ... signingConfig ... } 块
+          s2 = re.sub(
+              r'if \(keystoreProperties\.containsKey\("storeFile"\)\) \{\s*signingConfig = signingConfigs\.getByName\("release"\)\s*\}',
+              'signingConfig = signingConfigs.getByName("release")',
+              s2
+          )
+          p.write_text(s2)
+          print("PATCH_DONE")
           PY
-      - name: 构建 APK
+          echo "===== build.gradle.kts 签名相关（patch 后）====="
+          grep -n "signingConfig\|keystore\|storeFile\|storePassword\|keyAlias\|keyPassword" src-tauri/gen/android/app/build.gradle.kts || true
+- name: 构建 APK
         working-directory: app
         run: pnpm exec tauri android build --apk --split-per-abi --target aarch64
       - name: APK 改名
