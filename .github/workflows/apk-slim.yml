@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/apk-slim.yml'
-      - 'app/**'
-      - 'package.json'
+      - ".github/workflows/apk-slim.yml"
+      - "app/**"
+      - "package.json"
 permissions:
   contents: read
 jobs:
@@ -15,11 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
-        with: { node-version: '22' }
+        with: { node-version: "22" }
       - uses: pnpm/action-setup@v6
         with: { version: 10 }
       - uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: '21' }
+        with: { distribution: temurin, java-version: "21" }
       - uses: android-actions/setup-android@v3
         with: { packages: platform-tools }
       - name: 装 NDK
@@ -27,12 +27,9 @@ jobs:
           sdkmanager --install "ndk;27.0.12077973"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
+        with: { targets: aarch64-linux-android }
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: app/src-tauri -> target
-          prefix-key: ${{ hashFiles('app/ui/**') }}
+        with: { workspaces: app/src-tauri -> target }
       - run: pnpm install
         working-directory: app
       - run: rm -rf app/src-tauri/android-runtime
@@ -45,7 +42,7 @@ jobs:
           c = json.loads(p.read_text())
           c['version'] = '$version'
           p.write_text(json.dumps(c, indent=2) + '\n')
-          print(f'tauri.conf.json version -> {c[\"version\"]}')
+          print(f'tauri.conf.json version -> {c["version"]}')
           "
       - name: 生成 android 工程
         working-directory: app
@@ -57,14 +54,13 @@ jobs:
           mkdir -p ~/.android
           echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           echo "keystore written ($(wc -c < ~/.android/debug.keystore) bytes)"
-      - name:       - name: 让 release 变体用 debug 签名
+      - name: 让 release 变体用 debug 签名
         working-directory: app
         run: |
           python3 - <<'PY'
           import pathlib
           p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
           s = p.read_text()
-          # 把 release 签名配置改成用 debug keystore(已注入到 ~/.android/debug.keystore)
           old = '''create("release") {
               keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }
               storePassword = keystoreProperties["storePassword"] as String?
@@ -80,8 +76,10 @@ jobs:
           s = s.replace(old, new)
           p.write_text(s)
           print("patched release signing -> fixed debug keystore")
-          PYpnpm exec tauri android build --apk --split-per-abi --target aarch64
+          PY
+      - name: 构建 APK
         working-directory: app
+        run: pnpm exec tauri android build --apk --split-per-abi --target aarch64
       - name: APK 改名
         run: |
           version=$(node -p "require('./package.json').version")
