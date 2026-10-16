@@ -30,11 +30,10 @@
   }
 }
 
-* {
+** {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  /* 安卓 WebView 触摸时会按 DOM 盒子刷一块方角蓝底,盖掉圆角也盖掉自定义按下态 */
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -48,6 +47,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light dark;
 }
 
 /* 顶栏:连上之后它没有信息价值,收成一条窄带把高度还给 dsh 的界面 */
@@ -60,12 +60,17 @@ body {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
-.topbar.slim { padding: calc(env(safe-area-inset-top, 0px) + 5px) 12px 5px; }
+.topbar.slim { padding: calc(env(safe-area-inset-top, 0px) + 4px) 10px 4px; min-height: 32px; }
 .brand { flex: 1; font-size: 15px; font-weight: 500; }
 .topbar.slim .brand { display: none; }
-.status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
 /* 主机名可能很长,让它省略而不是把「换主机」挤出屏幕 */
 #status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-extra { display: flex; align-items: center; gap: 4px; overflow: hidden; }
+.status-sep { color: var(--muted); opacity: 0.4; flex: none; }
+.status-tag { font-size: 10px; font-weight: 500; padding: 1px 5px; border-radius: 6px; background: var(--fill-soft); flex: none; }
+#status-time { white-space: nowrap; flex: none; }
+#status-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .dot-off { background: var(--muted); }
 .dot-connecting { background: var(--warn); }
