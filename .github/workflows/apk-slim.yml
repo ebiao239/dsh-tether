@@ -61,23 +61,35 @@ jobs:
           import pathlib
           p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
           s = p.read_text()
-          old = '''create("release") {
+          # 1) signingConfigs.release 指向固定 debug keystore
+          old_sc = '''create("release") {
               keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }
               storePassword = keystoreProperties["storePassword"] as String?
               keyAlias = keystoreProperties["keyAlias"] as String?
               keyPassword = keystoreProperties["password"] as String?
           }'''
-          new = '''create("release") {
+          new_sc = '''create("release") {
               storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
               storePassword = "android"
               keyAlias = "androiddebugkey"
               keyPassword = "android"
           }'''
-          s = s.replace(old, new)
+          s = s.replace(old_sc, new_sc)
+          # 2) buildTypes.release 无条件引用 release signingConfig(否则产 unsigned)
+          old_bt = '''if (keystoreProperties.containsKey("storeFile")) {
+                  signingConfig = signingConfigs.getByName("release")
+              }'''
+          new_bt = '''signingConfig = signingConfigs.getByName("release")'''
+          if old_bt in s:
+              s = s.replace(old_bt, new_bt)
+              print("patched buildTypes.release -> unconditional signing")
+          else:
+              print("WARN: buildTypes.release if-block not found, check indentation")
+              print(s[s.find("getByName(\\"release\\")"):s.find("getByName(\\"release\\")")+400])
           p.write_text(s)
           print("patched release signing -> fixed debug keystore")
           PY
-      - name: 构建 APK
+- name: 构建 APK
         working-directory: app
         run: pnpm exec tauri android build --apk --split-per-abi --target aarch64
       - name: APK 改名
