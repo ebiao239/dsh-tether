@@ -1,6 +1,11 @@
 name: lan-slim
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/apk-slim.yml'
+      - 'app/**'
+      - 'package.json'
 permissions:
   contents: read
 jobs:
