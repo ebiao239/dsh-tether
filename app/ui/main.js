@@ -84,8 +84,8 @@ function formatDuration(ms) {
   if (totalMin < 1) return t('status.justNow')
   const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
-  if (h > 0) return m > 0 ? t('status.hoursMinutes', { h, m }) : t('status.hours', { h })
-  return t('status.minutes', { m: totalMin })
+  if (h > 0) return m > 0 ? t('status.hm', { h, m }) : t('status.h', { h })
+  return t('status.m', { m: totalMin })
 }
 
 /** 从直连地址推断连接方式标签 */
@@ -110,6 +110,49 @@ function startTimeTick() {
 
 function stopTimeTick() {
   if (timeTickId !== null) { clearInterval(timeTickId); timeTickId = null }
+}
+
+// —— 累计流量 ——
+
+/** 格式化字节数: <1KB 显示 B, <1MB 显示 K, <1GB 显示 M, 以上显示 G */
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + 'B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + 'K'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + 'M'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'G'
+}
+
+let trafficTimer = null
+
+function startTrafficPoll() {
+  stopTrafficPoll()
+  // 立即取一次,之后每 2 秒刷新
+  pollTraffic()
+  trafficTimer = setInterval(pollTraffic, 2000)
+}
+
+function stopTrafficPoll() {
+  if (trafficTimer !== null) { clearInterval(trafficTimer); trafficTimer = null }
+  el('traffic-tx').classList.add('hidden')
+  el('traffic-rx').classList.add('hidden')
+  document.querySelector('.traffic-sep')?.classList.add('hidden')
+}
+
+async function pollTraffic() {
+  if (mode !== 'remote') return
+  try {
+    const { tx_bytes, rx_bytes } = await invoke('traffic_stats')
+    const tx = el('traffic-tx')
+    const rx = el('traffic-rx')
+    const sep = document.querySelector('.traffic-sep')
+    tx.textContent = '↑' + formatBytes(tx_bytes)
+    rx.textContent = '↓' + formatBytes(rx_bytes)
+    tx.classList.remove('hidden')
+    rx.classList.remove('hidden')
+    if (sep) sep.classList.remove('hidden')
+  } catch {
+    // 非 arm64 构建没这个命令,静默吞掉
+  }
 }
 
 // —— 待审批通知 ——
@@ -270,6 +313,7 @@ function onState({ status, detail }) {
     live = true
     connectionStart = Date.now()
     showConnectedLabel()
+    startTrafficPoll()
     // 刚配对完的主机还不在本地簿里,取回来补上名字和 addr
     if (hostName(connectingTo) === '') refreshHosts().catch(() => {})
     el('reconnect-row').classList.add('hidden')
@@ -280,6 +324,7 @@ function onState({ status, detail }) {
     live = false
     connectionStart = null
     stopTimeTick()
+    stopTrafficPoll()
     setStatus('disconnected', t('status.disconnected'))
     el('webui').removeAttribute('src')
     // 配对页正开着就把失败原因显示在那里,别把用户踢走
