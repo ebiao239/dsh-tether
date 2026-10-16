@@ -27,6 +27,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri -> target
+          prefix-key: ${{ hashFiles('app/ui/**') }}
       - run: pnpm install
         working-directory: app
       - run: rm -rf app/src-tauri/android-runtime
