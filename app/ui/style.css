@@ -90,6 +90,8 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .topbar.slim { align-items: center; padding: calc(env(safe-area-inset-top, 0px) + 2px) 6px 2px; min-height: 24px; gap: 4px; }
+/* 品牌名不参与伸缩:它只有「DSH Tether」几个字,一旦 flex:1 就会撑到
+   屏幕中线,把状态行整段推到右半边——顶栏看起来前面一大片空白就是这么来的。 */
 .brand { flex: none; font-size: 15px; font-weight: 500; }
 .topbar.slim .brand { display: none; }
 .status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; overflow: hidden; }
@@ -97,13 +99,16 @@ body {
 /* 整行溢出省略 */
 #status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar.slim #status-text { max-width: 56px; }
-/* 手机窄屏才需要压到 56px 省地方;平板/横屏空间够,放开到 180px,
-   否则主机名 N100 会被截成「N1…」 */
+/* 宽屏(平板/横屏)空间够,主机名不必压到 3 个字:56px → 180px,
+   否则 N100 会被截成「N1…」 */
 @media (min-width: 641px) {
   .topbar.slim #status-text { max-width: 180px; }
 }
 .status-extra { display: flex; align-items: center; gap: 4px; overflow: hidden; flex-shrink: 100; }
 .topbar.slim .status-extra { gap: 4px; }
+/* 非 slim 态(主机页/配对页)只留「状态 + 主机名」,地址/方式/时长/流量全部留空不显示。
+   这些信息是连上之后看 DSH 界面时才有意义的,放在配对页会把顶栏挤爆。 */
+.topbar:not(.slim) .status-extra { display: none; }
 .status-sep { color: var(--muted); opacity: 0.4; flex: none; }
 /* slim 态去分隔点:靠 gap 自然留白 */
 .topbar.slim .status-sep { display: none; }
@@ -111,7 +116,7 @@ body {
 #status-time { white-space: nowrap; flex: none; }
 #status-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar.slim #status-addr { max-width: 88px; }
-/* 平板放开地址限宽,IP 不再被截 */
+/* 宽屏放开 IP 限宽,完整显示 192.168.6.13 */
 @media (min-width: 641px) {
   .topbar.slim #status-addr { max-width: 160px; }
 }
