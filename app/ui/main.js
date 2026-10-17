@@ -444,10 +444,25 @@ el('open-hosts').addEventListener('click', () => { refreshHosts(); showView('hos
 // 那个按钮在 iframe 里、跨源,只能经 postMessage 过来;只认 web UI 那个源。
 window.addEventListener('message', (e) => {
   if (webUiOrigin === null || e.origin !== webUiOrigin) return
+  if (e.data?.type === 'dsh-tether:theme') {
+    applyTheme(e.data.scheme)
+    return
+  }
   if (e.data?.type !== 'dsh-tether:open-hosts') return
   refreshHosts()
   showView('hosts')
 })
+
+/**
+ * 跟随软件主题:插件从 dsh 页面读出已解析的配色(documentElement 的
+ * color-scheme)后 postMessage 过来,这里落到 :root[data-theme] 上。
+ * 外壳与 dsh 是跨源 iframe,拿不到对方 DOM,只能靠这条通道。
+ * scheme 只接受 'light' / 'dark',其余值(含 undefined)忽略,保持现有令牌。
+ */
+function applyTheme(scheme) {
+  if (scheme !== 'light' && scheme !== 'dark') return
+  document.documentElement.setAttribute('data-theme', scheme)
+}
 
 // 回前台即重连:Android 会在后台掐掉网络,回来时旧连接多半已死。
 // 本地模式则看 node 进程还在不在,被系统杀了就重起(会话已落盘,不丢)。
