@@ -391,16 +391,23 @@ function apply(ctx, config = {}) {
  */
 function injectNarrowScreenCss(html) {
   const css = `
-/* 侧栏底部的 sidebar.footer.action 是横排 flex 行,官方设想里放并排的小动作。
-   「连接手机」照抄「设置」的类,是占满一行的触发行;别的插件(dsh-cost-meter)
-   又往同一行放 width:100% 的面板,横排下两者互挤:本按钮被压到只剩图标,
-   rail 态更被顶出 56px 的侧栏。改成纵向堆叠,各占一行;独占时与横排等价。
-   rail 态容器宽随内容,居中才与「设置」图标对齐。 */
-[class*="footArea"] > [class*="footerActions"] {
+/* 侧栏底部 footerActions 的方向按折叠态分两种:
+   - 折叠(rail,56px):竖排图标条,每个入口一行,居中;
+   - 展开(280px):保持 dsh 默认的横排,两个入口并排各占一半。
+   旧实现无条件 column,展开态下每个按钮只剩半宽,中文被压成
+   「我的/电脑」「接/手」两行——这就是首行挤在一起的原因。 */
+[class*="collapsed"] [class*="footArea"] > [class*="footerActions"] {
   flex-direction: column !important;
-  align-items: stretch !important;
+  align-items: center !important;
 }
-[class*="collapsed"] [class*="footArea"] > [class*="footerActions"] { align-items: center !important; }
+/* 展开态:不强制改方向,只保证两个入口等分并垂直居中 */
+[class*="footArea"] > [class*="footerActions"] {
+  align-items: center !important;
+}
+/* 展开态下按钮不换行、文字不折行(横排时空间够,折行才是问题) */
+[class*="footArea"] > [class*="footerActions"] button {
+  white-space: nowrap !important;
+}
 /* 0.1.21 的渲染端 client.js(0.1.23 已删)会把「连接手机」塞进「设置」按钮内部,
    与 index.js 的 hosts-trigger 重复:底栏看似三项,且「设置」被撑宽、整排错位。
    宿主仍装旧版时,靠这条把它挡掉——不限宽度,桌面端同样会重复。 */
@@ -532,40 +539,6 @@ function injectNarrowScreenCss(html) {
     height: auto !important;
     z-index: 2;
   }
-}
-
-/* ── 平板/宽屏(>640px):保留图标+文字,并把两个入口的几何统一 ──
-   手机窄屏的规则在上面那个 @media (max-width:640px) 里,把它收成纯图标;
-   这里是与它互补的另一半:宽屏不做压缩,只做对齐。 */
-@media (min-width: 641px) {
-  /* 两个入口:同一行高、同一左内边距、图标与文字同间距 —— 这样「连接手机」
-     和「设置」的左边缘、图标中心、文字基线全部对齐 */
-  button:has(> [data-slot="settings.trigger"]),
-  [data-dsh-tether="hosts-trigger"] {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    min-height: 32px !important;
-    padding: 6px 12px !important;
-    gap: 10px !important;
-  }
-  /* 图标尺寸与顶部留白统一,视觉重量一致 */
-  button:has(> [data-slot="settings.trigger"]) > svg,
-  [data-dsh-tether="hosts-trigger"] > svg {
-    flex: none !important;
-    width: 18px !important;
-    height: 18px !important;
-    margin: 0 !important;
-    align-self: center !important;
-  }
-  [data-dsh-tether="hosts-row"] { width: 100% !important; }
-  /* 顺序:让「连接手机/我的电脑」排在「设置」之后。
-     底栏是个纵向 flex 列,直接给我们的行进 order,不用动别人的 DOM。 */
-  [data-dsh-tether="hosts-row"] { order: 2; }
-  /* 宽屏文字必须显示(窄屏那条 display:none 不在此区间,不会打架) */
-  [data-dsh-tether="hosts-label"] { display: inline !important; }
 }`
   // 抽屉遮罩只是画上去的,点它不会收起——那需要脚本。这段只做这一件事:
   // 窄屏下点到抽屉外面就替用户按一次侧栏开关。
@@ -778,7 +751,7 @@ function injectNarrowScreenCss(html) {
     button.setAttribute('aria-label', label)
     // 类名带内容哈希,照抄隔壁「设置」按钮当前的,外观自然一致
     button.className = reference.className
-    // 显示器图标(而非手机):「我的电脑」指电脑,用显示器语义更准;
+    // 显示器图标:「我的电脑」指电脑,用显示器比手机语义更准;
     // 手机图标留给「连接手机」场景,两者不再混淆。
     button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg><span data-dsh-tether="hosts-label">' + label + '</span>'
     button.addEventListener('click', function () {
@@ -787,6 +760,8 @@ function injectNarrowScreenCss(html) {
     })
     row.append(button)
     slot.append(row)
+    // 顺序:让「我的电脑」排在「设置」之后(order 比改 DOM 更稳,不碰别人的节点)
+    row.style.order = '2'
     // 侧栏展开/收起时「设置」两层都会换类名(rail 与否),跟着同步
     new MutationObserver(function () {
       button.className = reference.className
