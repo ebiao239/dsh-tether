@@ -391,16 +391,32 @@ function apply(ctx, config = {}) {
  */
 function injectNarrowScreenCss(html) {
   const css = `
-/* 侧栏底部 footerActions 的布局只由「侧栏是否折叠」决定,与设备无关:
-   - 折叠(rail,56px):纵向排列,每行一个入口,居中;
-   - 展开(280px+):横向排列,两个入口并排各占一半。 */
-[class*="collapsed"] [class*="footArea"] > [class*="footerActions"] {
+/* 底栏布局:真正装「手机 / 我的电脑」两个按钮的容器是我们自己建的 hosts-row,
+   它默认是 block,子按钮按块级纵向堆叠——这才是「展开态也纵向」的真正原因。
+   (外层 footerActions 只设了 display:flex,方向本来就是 row,改它没用。)
+   所以方向必须落在 hosts-row 上,折叠/展开只看 [class*="collapsed"]。 */
+[data-dsh-tether="hosts-row"] {
+  display: flex !important;
+  flex-direction: row !important;      /* 展开:两个入口并排 */
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+[data-dsh-tether="hosts-row"] > button {
+  flex: 1 1 0 !important;              /* 各占一半 */
+  min-width: 0 !important;
+}
+/* 折叠(rail,56px):纵向,每个入口一行,居中 */
+[class*="collapsed"] [data-dsh-tether="hosts-row"] {
   flex-direction: column !important;
   align-items: center !important;
+  gap: 2px !important;
 }
-[class*="footArea"] > [class*="footerActions"] {
-  flex-direction: row !important;
-  align-items: center !important;
+[class*="collapsed"] [data-dsh-tether="hosts-row"] > button {
+  flex: none !important;
+  width: 100% !important;
 }
 /* 展开态下按钮不换行、文字不折行(横排时空间够,折行才是问题) */
 [class*="footArea"] > [class*="footerActions"] button {
@@ -780,9 +796,17 @@ button:has(> [data-slot="settings.trigger"]) > svg {
       .catch(function (e) { viewer(tx('配对', 'Pairing'), '', String(e && e.message ? e.message : e)) })
   }
 
+  // 把 client.js 注入的「连接手机」搬进底栏的函数。定义在 mountHostsTrigger 外部,
+  // 这样「已挂载」分支也能调用它(定义在内部时会被函数开头的 return 挡掉)。
+  var adoptPhoneButtonGlobal = function () {}
+
   function mountHostsTrigger() {
     var slot = document.querySelector('[data-slot="sidebar.footer.action"]')
-    if (!slot || slot.querySelector('[data-dsh-tether="hosts-trigger"]')) return
+    if (!slot) return
+    // 已挂载也要继续把「连接手机」搬进底栏(幂等操作,内部自行判定),
+    // 否则第二次调用被下面的 return 挡掉,手机按钮永远搬不过来。
+    adoptPhoneButtonGlobal()
+    if (slot.querySelector('[data-dsh-tether="hosts-trigger"]')) return
     var settings = document.querySelector('[data-slot="settings.trigger"]')
     var reference = settings && settings.closest ? settings.closest('button') : null
     if (!reference || !reference.parentElement) return
@@ -813,7 +837,7 @@ button:has(> [data-slot="settings.trigger"]) > svg {
     // client.js 注入的「连接手机」被塞在「设置」齿轮插槽里(button 套 button),
     // 位置不对、也不是底栏成员。把它摘出来放进底栏这一行,排在「我的电脑」前面,
     // 全站就只有一个手机图标 + 一个电脑图标。
-    function adoptPhoneButton() {
+    adoptPhoneButtonGlobal = function () {
       var legacy = document.querySelector('[data-dsh-tether="sidebar-btn"]')
       if (!legacy || row.contains(legacy)) return
       // 摘掉它自带的类名/行内样式,改由我们这行的 CSS 统一管
@@ -830,8 +854,8 @@ button:has(> [data-slot="settings.trigger"]) > svg {
       }, true)
       row.insertBefore(legacy, button)
     }
-    adoptPhoneButton()
-    new MutationObserver(adoptPhoneButton).observe(document.documentElement, { childList: true, subtree: true })
+    adoptPhoneButtonGlobal()
+    new MutationObserver(function () { adoptPhoneButtonGlobal() }).observe(document.documentElement, { childList: true, subtree: true })
     // 侧栏展开/收起时「设置」两层都会换类名(rail 与否),跟着同步
     new MutationObserver(function () {
       button.className = reference.className
