@@ -448,6 +448,11 @@ window.addEventListener('message', (e) => {
     applyTheme(e.data.scheme)
     return
   }
+  // 侧栏底栏的「连接手机」:跳到配对页(添加电脑)。同样是跨源 iframe 只能走消息。
+  if (e.data?.type === 'dsh-tether:open-pair') {
+    openPairView()
+    return
+  }
   if (e.data?.type !== 'dsh-tether:open-hosts') return
   refreshHosts()
   showView('hosts')
