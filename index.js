@@ -391,28 +391,74 @@ function apply(ctx, config = {}) {
  */
 function injectNarrowScreenCss(html) {
   const css = `
-/* 侧栏底部 footerActions 的方向按折叠态分两种:
-   - 折叠(rail,56px):竖排图标条,每个入口一行,居中;
-   - 展开(280px):保持 dsh 默认的横排,两个入口并排各占一半。
-   旧实现无条件 column,展开态下每个按钮只剩半宽,中文被压成
-   「我的/电脑」「接/手」两行——这就是首行挤在一起的原因。 */
+/* 侧栏底部 footerActions 的布局只由「侧栏是否折叠」决定,与设备无关:
+   - 折叠(rail,56px):纵向排列,每行一个入口,居中;
+   - 展开(280px+):横向排列,两个入口并排各占一半。 */
 [class*="collapsed"] [class*="footArea"] > [class*="footerActions"] {
   flex-direction: column !important;
   align-items: center !important;
 }
-/* 展开态:不强制改方向,只保证两个入口等分并垂直居中 */
 [class*="footArea"] > [class*="footerActions"] {
+  flex-direction: row !important;
   align-items: center !important;
 }
 /* 展开态下按钮不换行、文字不折行(横排时空间够,折行才是问题) */
 [class*="footArea"] > [class*="footerActions"] button {
   white-space: nowrap !important;
 }
+/* 「我的电脑」按钮照抄了「设置」的类名,连带继承了它的灰底填充——
+   深色主题下这块灰底和背景不匹配。底色抹掉,只保留下按反馈。 */
+[data-dsh-tether="hosts-trigger"],
+[data-dsh-tether="sidebar-btn"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+/* 图标与文字垂直居中、水平靠中:两个入口内部对齐一致,
+   中间的空隙由 justify-content:center 收拢。 */
+[data-dsh-tether="hosts-trigger"],
+[data-dsh-tether="sidebar-btn"],
+button:has(> [data-slot="settings.trigger"]) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  line-height: 1 !important;
+}
+/* 图标不被文字基线拉偏(垂直居中的关键) */
+[data-dsh-tether="hosts-trigger"] > svg,
+[data-dsh-tether="sidebar-btn"] > svg,
+button:has(> [data-slot="settings.trigger"]) > svg {
+  flex: none !important;
+  align-self: center !important;
+  margin: 0 !important;
+  display: block !important;
+}
+/* 「连接手机」沿用的是 client.js 注入的旧按钮,它被塞进「设置」齿轮插槽内部
+   (button 套 button,位置也不在底栏)。这里把它从齿轮里挪到底栏,
+   与「我的电脑」并排——全站因此只有【一个手机图标 + 一个电脑图标】。 */
+[data-slot="settings.trigger"] > [data-dsh-tether="sidebar-btn"] {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+}
+/* 文字自身不额外撑高,避免「我的电脑」视觉偏下 */
+[data-dsh-tether="hosts-trigger"] > span {
+  display: inline-flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
+}
 /* 0.1.21 的渲染端 client.js(0.1.23 已删)会把「连接手机」塞进「设置」按钮内部,
    与 index.js 的 hosts-trigger 重复:底栏看似三项,且「设置」被撑宽、整排错位。
    宿主仍装旧版时,靠这条把它挡掉——不限宽度,桌面端同样会重复。 */
 [data-dsh-tether="sidebar-btn"] { display: none !important; }
-@media (max-width: 640px) {
+/* 手机专属样式:必须同时满足「窄」和「竖屏」。
+   只写 max-width 会把手机横屏(844px)误判成平板、把平板竖屏(800px)误判成手机。
+   加上 orientation:portrait 后,规则只落在真正的手机竖屏上;
+   手机横屏按平板处理(与錶哥 2026-10-17 确认的一致)。 */
+@media (max-width: 640px) and (orientation: portrait) {
   /* hero 背后的装饰性发光椭圆比视口宽,会让整页能被横向拖动 */
   html, body { overflow-x: hidden; }
   /* 弹窗在窄屏铺满,别再留出用不上的边距 */
@@ -502,13 +548,15 @@ function injectNarrowScreenCss(html) {
   [class*="_frame"]:has(> [class*="_handle"])::after { opacity: 1; }
   [class*="_frame"] > [class*="_handle"] { display: none !important; }
 
-  /* 底栏入口统一成纯图标:底栏本就窄,「设置」两字 vs「我的电脑」四字,文字宽度
-     一长一短,图标自然对不齐。隐掉文字标签,无障碍名留在 aria-label 上不丢;
-     按钮占满整行、内容居中,两个图标就落在同一中轴上。 */
+  /* 手机竖屏底栏:折叠→纵向纯图标;展开→横向并列、各占一半(纯图标)。
+     「手机」按钮(legacy sidebar-btn,已被 adoptPhoneButton 挪进这一行)
+     和「我的电脑」同等对待。 */
   [data-slot="settings.trigger"] > span { display: none !important; }
-  [data-dsh-tether="hosts-label"] { display: none; }
+  [data-dsh-tether="hosts-label"],
+  [data-dsh-tether="phone-label"] { display: none !important; }
   button:has(> [data-slot="settings.trigger"]),
-  [data-dsh-tether="hosts-trigger"] {
+  [data-dsh-tether="hosts-trigger"],
+  [data-dsh-tether="sidebar-btn"] {
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
@@ -762,6 +810,28 @@ function injectNarrowScreenCss(html) {
     slot.append(row)
     // 顺序:让「我的电脑」排在「设置」之后(order 比改 DOM 更稳,不碰别人的节点)
     row.style.order = '2'
+    // client.js 注入的「连接手机」被塞在「设置」齿轮插槽里(button 套 button),
+    // 位置不对、也不是底栏成员。把它摘出来放进底栏这一行,排在「我的电脑」前面,
+    // 全站就只有一个手机图标 + 一个电脑图标。
+    function adoptPhoneButton() {
+      var legacy = document.querySelector('[data-dsh-tether="sidebar-btn"]')
+      if (!legacy || row.contains(legacy)) return
+      // 摘掉它自带的类名/行内样式,改由我们这行的 CSS 统一管
+      legacy.removeAttribute('class')
+      legacy.style.cssText = ''
+      legacy.setAttribute('aria-label', tx('连接手机', 'Connect a phone'))
+      // 手机图标(旧按钮原本就是手机图标,只重置尺寸,与电脑图标对齐)
+      legacy.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg><span data-dsh-tether="phone-label">' + tx('连接手机', 'Connect a phone') + '</span>'
+      // 点击行为保持它原本的语义:手机 App 里通知外壳打开配对页
+      legacy.addEventListener('click', function (e) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (framed) window.parent.postMessage({ type: 'dsh-tether:open-pair' }, '*')
+      }, true)
+      row.insertBefore(legacy, button)
+    }
+    adoptPhoneButton()
+    new MutationObserver(adoptPhoneButton).observe(document.documentElement, { childList: true, subtree: true })
     // 侧栏展开/收起时「设置」两层都会换类名(rail 与否),跟着同步
     new MutationObserver(function () {
       button.className = reference.className
