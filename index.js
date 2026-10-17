@@ -505,6 +505,10 @@ function injectNarrowScreenCss(html) {
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
+    /* 关键:按钮必须先撑满整行,居中才有意义。缺这条时按钮宽=图标宽,
+       贴在行首,justify-content:center 只在那个窄盒子里生效,视觉仍靠左。 */
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
   [data-dsh-tether="hosts-row"] { width: 100% !important; }
   @media (prefers-reduced-motion: reduce) {
@@ -762,6 +766,29 @@ function injectNarrowScreenCss(html) {
   }
   mountHostsTrigger()
   new MutationObserver(mountHostsTrigger).observe(document.documentElement, { childList: true, subtree: true })
+
+  // 把 dsh 的实际配色报给外层手机 App 的顶栏/外壳。
+  // 外壳与 dsh 跨源,读不到这里的 DOM,只能靠 postMessage。
+  // 取 documentElement 的 color-scheme:dsh 的 ThemePresenter 会把已解析的
+  // dark/light 写在这个内联样式上,所以「跟随系统」和「手动选深/浅」都能反映出来。
+  function reportTheme() {
+    if (!framed) return
+    var root = document.documentElement
+    var scheme = (root.style.colorScheme || '').split(' ')[0]
+    if (scheme !== 'light' && scheme !== 'dark') {
+      // 内联样式还没写(主题尚未解析),退一步看 data-ds-theme-source
+      var src = root.getAttribute('data-ds-theme-source')
+      scheme = src === 'light' || src === 'dark' ? src : ''
+    }
+    if (scheme === '') return
+    window.parent.postMessage({ type: 'dsh-tether:theme', scheme: scheme }, '*')
+  }
+  reportTheme()
+  // 主题切换不会重载页面,只改属性,所以盯这两个变化点
+  new MutationObserver(reportTheme).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['style', 'data-ds-theme-source'],
+  })
 
   document.addEventListener('click', function (event) {
     if (!narrow.matches) return
