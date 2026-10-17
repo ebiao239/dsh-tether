@@ -14,8 +14,27 @@
   --danger: #f5766b;
 }
 
+/* 主题切换的两条通道:
+   1) :root[data-theme="light"] —— 由 main.js 依据 DSH 页面 postMessage 过来的
+      实际配色写入,这是「跟随软件主题」的正路(DSH 里手动切深/浅也能跟到)。
+   2) @media (prefers-color-scheme: light) —— 首帧兜底。postMessage 到达前
+      页面已经绘制,靠它避免先闪一帧深色。
+   两者都写,后者只在前者未设置时起作用(见下方 :not([data-theme]) 限定)。 */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --text: #0f1115;
+  --muted: #81858c;
+  --fill: #ebeef2;
+  --fill-soft: #f5f6f7;
+  --border: rgba(0, 0, 0, 0.1);
+  --ok: #12805c;
+  --warn: #b25e09;
+  --danger: #b42318;
+}
+
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #ffffff;
     --surface: #ffffff;
     --text: #0f1115;
@@ -29,14 +48,25 @@
   }
 }
 
-** {
+/* 通配符是单个 *,** 是非法选择器,整条规则会被浏览器丢弃。
+   原文件写成 ** 导致这段重置从未生效过:body 的 8px 默认外边距、
+   ul 的 40px 左缩进、input/.btn-block 的 content-box 溢出全都留着。 */
+* {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body { height: 100%; }
+/* html 也上底色:UA 在 color-scheme 未匹配时会用白色画布,
+   只给 body 上色时,safe-area 那块 padding 会露出 html 的白。 */
+html {
+  height: 100%;
+  background: var(--bg);
+}
+body {
+  height: 100%;
+}
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-size: 16px;
@@ -46,7 +76,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  color-scheme: light dark;
+  color-scheme: dark light;
 }
 
 /* 顶栏:未连接时依然有存在感;连上后收成 24px 窄带 */
