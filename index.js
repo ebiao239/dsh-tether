@@ -532,6 +532,40 @@ function injectNarrowScreenCss(html) {
     height: auto !important;
     z-index: 2;
   }
+}
+
+/* ── 平板/宽屏(>640px):保留图标+文字,并把两个入口的几何统一 ──
+   手机窄屏的规则在上面那个 @media (max-width:640px) 里,把它收成纯图标;
+   这里是与它互补的另一半:宽屏不做压缩,只做对齐。 */
+@media (min-width: 641px) {
+  /* 两个入口:同一行高、同一左内边距、图标与文字同间距 —— 这样「连接手机」
+     和「设置」的左边缘、图标中心、文字基线全部对齐 */
+  button:has(> [data-slot="settings.trigger"]),
+  [data-dsh-tether="hosts-trigger"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    min-height: 32px !important;
+    padding: 6px 12px !important;
+    gap: 10px !important;
+  }
+  /* 图标尺寸与顶部留白统一,视觉重量一致 */
+  button:has(> [data-slot="settings.trigger"]) > svg,
+  [data-dsh-tether="hosts-trigger"] > svg {
+    flex: none !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    align-self: center !important;
+  }
+  [data-dsh-tether="hosts-row"] { width: 100% !important; }
+  /* 顺序:让「连接手机/我的电脑」排在「设置」之后。
+     底栏是个纵向 flex 列,直接给我们的行进 order,不用动别人的 DOM。 */
+  [data-dsh-tether="hosts-row"] { order: 2; }
+  /* 宽屏文字必须显示(窄屏那条 display:none 不在此区间,不会打架) */
+  [data-dsh-tether="hosts-label"] { display: inline !important; }
 }`
   // 抽屉遮罩只是画上去的,点它不会收起——那需要脚本。这段只做这一件事:
   // 窄屏下点到抽屉外面就替用户按一次侧栏开关。
@@ -744,7 +778,9 @@ function injectNarrowScreenCss(html) {
     button.setAttribute('aria-label', label)
     // 类名带内容哈希,照抄隔壁「设置」按钮当前的,外观自然一致
     button.className = reference.className
-    button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg><span data-dsh-tether="hosts-label">' + label + '</span>'
+    // 显示器图标(而非手机):「我的电脑」指电脑,用显示器语义更准;
+    // 手机图标留给「连接手机」场景,两者不再混淆。
+    button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg><span data-dsh-tether="hosts-label">' + label + '</span>'
     button.addEventListener('click', function () {
       if (framed) window.parent.postMessage({ type: 'dsh-tether:open-hosts' }, '*')
       else showPairing()
